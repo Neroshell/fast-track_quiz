@@ -1,10 +1,12 @@
 package main
 
 import (
-	"encoding/json"
+	
 	"fmt"
 	"net/http"
 	"sync"
+
+	"github.com/gin-gonic/gin"
 )
 
 // Question represents a quiz question with text, options, and the correct answer
@@ -36,21 +38,33 @@ var (
 	mu                sync.Mutex // Mutex to safely update shared variables
 )
 
+func main() {
+	router := gin.Default()
+
+	// Route to get the list of questions
+	router.GET("/questions", getQuestionsHandler)
+
+	// Route to submit answers and calculate the score
+	router.POST("/submit", submitAnswersHandler)
+
+	// Start the server and listen on port 8080
+	fmt.Println("Server is running on http://localhost:8080")
+	router.Run(":8080")
+}
+
 // getQuestionsHandler handles HTTP requests for retrieving the list of questions
-func getQuestionsHandler(w http.ResponseWriter, r *http.Request) {
-	// Send the list of questions as a JSON response
-	json.NewEncoder(w).Encode(questions)
+func getQuestionsHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, questions) // Send the list of questions as a JSON response
 }
 
 // submitAnswersHandler processes the user's quiz answers and calculates their score
-func submitAnswersHandler(w http.ResponseWriter, r *http.Request) {
+func submitAnswersHandler(c *gin.Context) {
 	var submission Submission
 
 	// Decode the incoming JSON request into a Submission struct
-	err := json.NewDecoder(r.Body).Decode(&submission)
-	if err != nil {
+	if err := c.ShouldBindJSON(&submission); err != nil {
 		// If decoding fails, return a Bad Request response
-		http.Error(w, "Invalid submission", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid submission"})
 		return
 	}
 
@@ -73,23 +87,10 @@ func submitAnswersHandler(w http.ResponseWriter, r *http.Request) {
 	comparison := (float64(totalCorrect) / float64(totalQuizzesTaken*len(questions))) * 100
 
 	// Prepare the result data to send back to the user
-	result := map[string]interface{}{
-		"correct":    correctCount,        // Number of correct answers for this user
-		"total":      len(questions),      // Total number of questions
+	result := gin.H{
+		"correct":    correctCount,                     // Number of correct answers for this user
+		"total":      len(questions),                   // Total number of questions
 		"comparison": fmt.Sprintf("%.2f", comparison), // Comparison percentage
 	}
-	// Send the result as a JSON response
-	json.NewEncoder(w).Encode(result)
-}
-
-func main() {
-	// Route to get the list of questions
-	http.HandleFunc("/questions", getQuestionsHandler)
-
-	// Route to submit answers and calculate the score
-	http.HandleFunc("/submit", submitAnswersHandler)
-
-	// Start the server and listen on port 8080
-	fmt.Println("Server is running on http://localhost:8080")
-	http.ListenAndServe(":8080", nil)
+	c.JSON(http.StatusOK, result) // Send the result as a JSON response
 }
